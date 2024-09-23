@@ -9,6 +9,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["file"])) {
         $downloadSum = 0;
         $uploadSum = 0;
         $count = 0;
+        $locations = array();
 
         // Skip header row
         fgetcsv($handle);
@@ -24,11 +25,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["file"])) {
 
             // Labeling using date/time (1st column)
             $labels[] = $data[0];
+
+            // Collecting location data
+            $lat = floatval($data[3]);
+            $lon = floatval($data[4]);
+            if ($lat != 0 && $lon != 0) {
+                $locations[] = array("lat" => $lat, "lon" => $lon, "date" => $data[0], "download" => $download, "upload" => $upload);
+            }
         }
         fclose($handle);
 
         $averageDownload = ($count > 0) ? ($downloadSum / $count) : 0;
         $averageUpload = ($count > 0) ? ($uploadSum / $count) : 0;
+
+        // HTML output
+        echo '<!DOCTYPE html>
+        <html>
+        <head>
+            <title>Speed Test Results</title>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+            <link rel="stylesheet" href="main.css">
+        </head>
+        <body>';
 
         // Output average speeds
         echo "<h3>Average Download Speed: " . number_format($averageDownload, 2) . " Mbps</h3>";
@@ -58,11 +76,47 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["file"])) {
         echo "            tension: 0.1";
         echo "        }]";
         echo "    },";
-        echo "    options: {}";
+        echo "    options: {";
+        echo "        tooltips: {";
+        echo "            callbacks: {";
+        echo "                label: function(tooltipItem, data) {";
+        echo "                    var label = data.datasets[tooltipItem.datasetIndex].label || '';";
+        echo "                    if (label) {";
+        echo "                        label += ': ';";
+        echo "                    }";
+        echo "                    label += tooltipItem.yLabel + ' Mbps';";
+        echo "                    return label;";
+        echo "                }";
+        echo "            }";
+        echo "        }";
+        echo "    }";
         echo "});";
         echo "</script>";
+
+
+        // Map container
+        echo "<div id='map'></div><br>";
+
+        // Generate the map with Leaflet.js
+        echo "<script src='https://unpkg.com/leaflet/dist/leaflet.js'></script>";
+        echo "<script>";
+        echo "var map = L.map('map').setView([0, 0], 2);"; // Set default view
+        echo "L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {";
+        echo "    maxZoom: 19,";
+        echo "}).addTo(map);";
+
+        // Add markers to the map
+        echo "var bounds = new L.LatLngBounds();";
+        foreach ($locations as $location) {
+            echo "var marker = L.marker([" . $location['lat'] . ", " . $location['lon'] . "]).addTo(map);";
+            echo "marker.bindPopup('<b>Date:</b> " . $location['date'] . "<br><b>Download:</b> " . $location['download'] . " Mbps<br><b>Upload:</b> " . $location['upload'] . " Mbps');";
+            echo "bounds.extend(marker.getLatLng());";
+        }
+        echo "map.fitBounds(bounds);"; // Fit the map to show all markers
+        echo "</script>";
+
+        echo "</body></html>";
     } else {
         echo "Failed to open the uploaded file.";
     }
 }
-?>
